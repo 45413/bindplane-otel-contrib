@@ -9,8 +9,6 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	goleak.VerifyTestMain(m,
-		// The opencensus stats worker is started by the GCP SDK and cannot be stopped.
-		goleak.IgnoreTopFunction("go.opencensus.io/stats/view.(*worker).start"),
-	)
+	setupTestEnvironment()
+	goleak.VerifyTestMain(m)
 }
