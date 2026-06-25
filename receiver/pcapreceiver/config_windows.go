@@ -19,6 +19,7 @@ package pcapreceiver
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"go.opentelemetry.io/collector/component"
 )
@@ -26,10 +27,12 @@ import (
 // createDefaultConfig creates the default configuration for the receiver on Windows
 func createDefaultConfig() component.Config {
 	return &Config{
-		Interface:       "",    // Device names for Npcap use GUIDs, so we can't rely on a default value
-		SnapLen:         65535, // Maximum snapshot length
-		Promiscuous:     true,  // Enable promiscuous mode by default
-		ParseAttributes: true,  // Parse attributes by default
+		Interface:                "",              // Device names for Npcap use GUIDs, so we can't rely on a default value
+		SnapLen:                  65535,           // Maximum snapshot length
+		Promiscuous:              true,            // Enable promiscuous mode by default
+		ParseAttributes:          true,            // Parse attributes by default
+		EnableConnectionTracking: false,           // Opt-in flow tracking
+		ConnectionTimeout:        5 * time.Minute, // Idle flow expiry
 	}
 }
 

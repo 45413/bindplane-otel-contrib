@@ -3,6 +3,7 @@ module github.com/observiq/bindplane-otel-contrib/receiver/pcapreceiver
 go 1.26.4
 
 require (
+	github.com/google/uuid v1.6.0
 	github.com/gopacket/gopacket v1.6.1
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/golden v0.154.0
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/pdatatest v0.154.0
@@ -30,7 +31,6 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/hashicorp/go-version v1.9.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/knadh/koanf/maps v0.1.2 // indirect

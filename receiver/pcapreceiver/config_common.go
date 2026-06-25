@@ -14,11 +14,15 @@
 
 package pcapreceiver
 
+import "time"
+
 // Config defines configuration for the PCAP receiver
 type Config struct {
-	Interface       string `mapstructure:"interface"`        // Network interface to capture on (e.g., "en0" on Unix, "\Device\NPF_{GUID}" on Windows)
-	Filter          string `mapstructure:"filter"`           // BPF filter expression (optional)
-	SnapLen         int    `mapstructure:"snaplen"`          // Snapshot length in bytes (default: 65535)
-	Promiscuous     bool   `mapstructure:"promiscuous"`      // Enable promiscuous mode (default: true)
-	ParseAttributes bool   `mapstructure:"parse_attributes"` // Parse network attributes and add them to the logs
+	Interface                string        `mapstructure:"interface"`                  // Network interface to capture on (e.g., "en0" on Unix, "\Device\NPF_{GUID}" on Windows)
+	Filter                   string        `mapstructure:"filter"`                     // BPF filter expression (optional)
+	SnapLen                  int           `mapstructure:"snaplen"`                    // Snapshot length in bytes (default: 65535)
+	Promiscuous              bool          `mapstructure:"promiscuous"`                // Enable promiscuous mode (default: true)
+	ParseAttributes          bool          `mapstructure:"parse_attributes"`           // Parse network attributes and add them to the logs
+	EnableConnectionTracking bool          `mapstructure:"enable_connection_tracking"` // Track TCP/UDP flows and annotate packets with a stable connection ID
+	ConnectionTimeout        time.Duration `mapstructure:"connection_timeout"`         // Idle flow expiry duration (default: 5m)
 }

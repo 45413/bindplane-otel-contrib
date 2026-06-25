@@ -25,7 +25,9 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"time"
 
+	"github.com/observiq/bindplane-otel-contrib/receiver/pcapreceiver/parser"
 	"go.opentelemetry.io/collector/component"
 	"go.uber.org/zap"
 )
@@ -49,6 +51,15 @@ func (r *pcapReceiver) Start(ctx context.Context, _ component.Host) error {
 			zap.Error(err),
 			zap.String("message", "No packets will be collected. Please ensure the collector has the necessary privileges to capture network packets."))
 		return nil
+	}
+
+	// Initialize flow tracker when connection tracking is enabled
+	if r.config.EnableConnectionTracking {
+		timeout := r.config.ConnectionTimeout
+		if timeout == 0 {
+			timeout = 5 * time.Minute
+		}
+		r.flowTracker = parser.NewFlowTracker(timeout)
 	}
 
 	// Build the capture command
@@ -104,6 +115,10 @@ func (r *pcapReceiver) Start(ctx context.Context, _ component.Host) error {
 // Shutdown stops the packet capture on Unix systems
 func (r *pcapReceiver) Shutdown(_ context.Context) error {
 	r.logger.Debug("Shutting down PCAP receiver")
+
+	if r.flowTracker != nil {
+		r.flowTracker.Close()
+	}
 
 	if r.cancel != nil {
 		r.cancel()

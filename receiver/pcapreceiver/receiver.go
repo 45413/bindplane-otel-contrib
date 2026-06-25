@@ -32,16 +32,17 @@ import (
 
 // pcapReceiver receives network packets via tcpdump and emits them as logs
 type pcapReceiver struct {
-	id         component.ID
-	telemetry  component.TelemetrySettings
-	metrics    *metadata.TelemetryBuilder
-	config     *Config
-	logger     *zap.Logger
-	consumer   consumer.Logs
-	cancel     context.CancelFunc
-	cmd        *exec.Cmd   // Used on Unix systems for tcpdump process
-	pcapHandle interface{} // Used on Windows for go-pcap handle
-	obsrecv    *receiverhelper.ObsReport
+	id          component.ID
+	telemetry   component.TelemetrySettings
+	metrics     *metadata.TelemetryBuilder
+	config      *Config
+	logger      *zap.Logger
+	consumer    consumer.Logs
+	cancel      context.CancelFunc
+	cmd         *exec.Cmd          // Used on Unix systems for tcpdump process
+	pcapHandle  interface{}        // Used on Windows for go-pcap handle
+	obsrecv     *receiverhelper.ObsReport
+	flowTracker *parser.FlowTracker // Non-nil when EnableConnectionTracking=true
 }
 
 // newReceiver creates a new PCAP receiver
@@ -159,6 +160,19 @@ func (r *pcapReceiver) processPacketInfo(ctx context.Context, packetInfo *parser
 		}
 
 		attrs.PutInt("packet.length", int64(packetInfo.Length))
+
+		// Application-layer protocol enrichment
+		if packetInfo.HexData != "" {
+			if protoAttrs := parser.EnrichProtocol(packetInfo); protoAttrs != nil {
+				setProtocolAttributes(attrs, protoAttrs)
+			}
+		}
+
+		// Flow / connection tracking
+		if r.config.EnableConnectionTracking && r.flowTracker != nil {
+			connID := r.flowTracker.Track(packetInfo)
+			attrs.PutStr("network.connection.id", connID)
+		}
 	}
 
 	// Consume the log with observation tracking
@@ -182,4 +196,51 @@ func (r *pcapReceiver) processPacketInfo(ctx context.Context, packetInfo *parser
 	r.logger.Debug("Successfully consumed packet log",
 		zap.String("protocol", packetInfo.Protocol),
 		zap.String("transport", packetInfo.Transport))
+}
+
+// setProtocolAttributes maps ProtocolAttributes fields to OTel log attributes
+// following OpenTelemetry semantic conventions.
+func setProtocolAttributes(attrs pcommon.Map, p *parser.ProtocolAttributes) {
+	if p.DNSFound {
+		attrs.PutStr("dns.question.name", p.DNSQuestionName)
+		attrs.PutStr("dns.response_code", p.DNSResponseCode)
+		attrs.PutBool("dns.is_response", p.DNSIsResponse)
+	}
+	if p.HTTPFound {
+		if p.HTTPMethod != "" {
+			attrs.PutStr("http.request.method", p.HTTPMethod)
+		}
+		if p.HTTPURLFull != "" {
+			attrs.PutStr("url.full", p.HTTPURLFull)
+		}
+		if p.HTTPServerAddress != "" {
+			attrs.PutStr("server.address", p.HTTPServerAddress)
+		}
+		if p.HTTPStatusCode != 0 {
+			attrs.PutInt("http.response.status_code", int64(p.HTTPStatusCode))
+		}
+		if p.HTTPUserAgent != "" {
+			attrs.PutStr("user_agent.original", p.HTTPUserAgent)
+		}
+	}
+	if p.TLSFound {
+		if p.TLSServerName != "" {
+			attrs.PutStr("tls.server.name", p.TLSServerName)
+		}
+		if p.TLSVersion != "" {
+			attrs.PutStr("tls.protocol.version", p.TLSVersion)
+		}
+	}
+	if p.SSHFound {
+		if p.SSHProtocolVersion != "" {
+			attrs.PutStr("ssh.protocol.version", p.SSHProtocolVersion)
+		}
+		if p.SSHSoftwareVersion != "" {
+			attrs.PutStr("ssh.software.version", p.SSHSoftwareVersion)
+		}
+	}
+	if p.ICMPFound {
+		attrs.PutStr("icmp.type", p.ICMPType)
+		attrs.PutInt("icmp.code", int64(p.ICMPCode))
+	}
 }

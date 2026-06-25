@@ -27,6 +27,7 @@ import (
 	"go.uber.org/zap"
 )
 
+
 // Start starts the packet capture using gopacket/pcap on Windows
 func (r *pcapReceiver) Start(ctx context.Context, _ component.Host) error {
 	r.logger.Debug("Starting PCAP receiver", zap.String("interface", r.config.Interface))
@@ -63,6 +64,15 @@ func (r *pcapReceiver) Start(ctx context.Context, _ component.Host) error {
 		r.logger.Debug("Applied BPF filter", zap.String("filter", r.config.Filter))
 	}
 
+	// Initialize flow tracker when connection tracking is enabled
+	if r.config.EnableConnectionTracking {
+		timeout := r.config.ConnectionTimeout
+		if timeout == 0 {
+			timeout = 5 * time.Minute
+		}
+		r.flowTracker = parser.NewFlowTracker(timeout)
+	}
+
 	// Store handle for cleanup
 	r.pcapHandle = handle
 
@@ -86,6 +96,10 @@ func (r *pcapReceiver) Start(ctx context.Context, _ component.Host) error {
 // Shutdown stops the packet capture on Windows
 func (r *pcapReceiver) Shutdown(_ context.Context) error {
 	r.logger.Info("Shutting down PCAP receiver")
+
+	if r.flowTracker != nil {
+		r.flowTracker.Close()
+	}
 
 	if r.cancel != nil {
 		r.cancel()

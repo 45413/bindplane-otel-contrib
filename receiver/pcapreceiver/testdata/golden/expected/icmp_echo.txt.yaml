@@ -6,6 +6,12 @@ resourceLogs:
               - key: destination.address
                 value:
                   stringValue: "192.168.1.1"
+              - key: icmp.code
+                value:
+                  intValue: "0"
+              - key: icmp.type
+                value:
+                  stringValue: EchoRequest
               - key: network.interface.name
                 value:
                   stringValue: eth0
