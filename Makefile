@@ -25,6 +25,11 @@ export
 
 COLLECTOR_PATH ?= ../bindplane-otel-collector
 COLLECTOR_ABS ?= $(abspath $(COLLECTOR_PATH))
+COLLECTOR_OCB ?= $(shell command -v $${OCB:-builder} 2>/dev/null || echo $${GOBIN:-$$HOME/go/bin}/builder)
+COLLECTOR_OCB_VERSION ?= v0.154.0
+COLLECTOR_BUILD_DIR ?= $(COLLECTOR_ABS)/build
+COLLECTOR_MANIFEST ?= $(COLLECTOR_ABS)/manifests/observIQ/manifest.yaml
+COLLECTOR_AGENT_MAIN ?= $(COLLECTOR_ABS)/internal/extension/opampconnectionextension/cmd/main/main.go
 
 SNAPSHOT := $(shell git -C $(COLLECTOR_PATH) rev-parse --short HEAD)
 COLLECTOR_PREVIOUS_TAG := $(shell git -C $(COLLECTOR_PATH) tag --sort=v:refname --no-contains HEAD | grep -E "[0-9]+\.[0-9]+\.[0-9]+$$" | grep -v 'version' | tail -n1)
@@ -116,13 +121,24 @@ _build-setup:
 		echo "Clone the collector repo or update .local.env"; \
 		exit 1; \
 	fi
+	@if [ ! -x "$(COLLECTOR_OCB)" ]; then \
+		echo "ocb not found at $(COLLECTOR_OCB)."; \
+		echo "Install with: go install go.opentelemetry.io/collector/cmd/builder@$(COLLECTOR_OCB_VERSION)"; \
+		exit 1; \
+	fi
 	@echo "Building collector with local contrib modules..."
 	@CONTRIB_ROOT=$$(pwd) && \
 	rm -f go.work go.work.sum && \
+	cd "$(COLLECTOR_ABS)" && "$(COLLECTOR_OCB)" --config "$(COLLECTOR_MANIFEST)" --skip-compilation && cd "$$CONTRIB_ROOT" && \
+	cp "$(COLLECTOR_AGENT_MAIN)" "$(COLLECTOR_BUILD_DIR)/main.go" && \
+	rm -f "$(COLLECTOR_BUILD_DIR)/main_others.go" "$(COLLECTOR_BUILD_DIR)/main_windows.go" && \
 	go work init "$(COLLECTOR_ABS)" && \
+	go work use "$(COLLECTOR_BUILD_DIR)" && \
 	for dir in $$(find "$$CONTRIB_ROOT" -name "go.mod" -not -path "*/vendor/*" -not -path "*/internal/tools/*" -exec dirname {} \;); do \
 		go work use "$$dir"; \
 	done && \
+	cd "$(COLLECTOR_BUILD_DIR)" && GOWORK="$$CONTRIB_ROOT/go.work" go mod tidy && \
+	cd "$$CONTRIB_ROOT" && \
 	mkdir -p $(OUTDIR)
 
 # TODO: remove the go.opentelemetry.io/otel/metric/x replace above once the collector
@@ -181,7 +197,7 @@ _build-windows-arm64:
 
 .PHONY: _build-collector
 _build-collector:
-	go build -ldflags "-s -w -X github.com/observiq/bindplane-otel-contrib/pkg/version.version=$(COLLECTOR_VERSION)" -tags bindplane -o $(OUTDIR)/collector_$(GOOS)_$(GOARCH)$(EXT) "$(COLLECTOR_ABS)/cmd/collector"
+	go build -ldflags "-s -w -X github.com/observiq/bindplane-otel-contrib/pkg/version.version=$(COLLECTOR_VERSION)" -tags bindplane -o $(OUTDIR)/collector_$(GOOS)_$(GOARCH)$(EXT) "$(COLLECTOR_BUILD_DIR)"
 
 .PHONY: clean
 clean:
