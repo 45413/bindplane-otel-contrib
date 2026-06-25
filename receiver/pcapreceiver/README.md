@@ -91,6 +91,8 @@ tcpdump --version
 | `snaplen`     | int    | `65535` | No       | Maximum bytes to capture per packet (64-65535).             |
 | `promiscuous` | bool   | `true`  | No       | Enable promiscuous mode to capture all network traffic.     |
 | `parse_attributes` | bool | `true` | No | Parse network attributes and add them to the logs. |
+| `enable_connection_tracking` | bool | `false` | No | Track TCP/UDP flows and annotate each packet with a stable `network.connection.id` UUID. Requires `parse_attributes: true`. |
+| `connection_timeout` | duration | `5m` | No | How long a flow must be idle before it is evicted from the connection tracker. |
 
 \* On Windows, defaults to an Npcap device path (e.g., `\Device\NPF_{GUID}`)
 
@@ -171,6 +173,20 @@ receivers:
     promiscuous: true
 ```
 
+### Enable Connection Tracking
+
+```yaml
+receivers:
+  pcap:
+    interface: en0
+    filter: "tcp or udp"
+    parse_attributes: true
+    enable_connection_tracking: true
+    connection_timeout: 5m
+```
+
+Each packet will include a `network.connection.id` attribute. All packets belonging to the same TCP/UDP conversation share the same UUID, making it straightforward to group flows downstream.
+
 ## Output Format
 
 Each captured packet is emitted as an OTel log with the following structure:
@@ -187,13 +203,18 @@ Each captured packet is emitted as an OTel log with the following structure:
     "destination.address": "192.168.1.1",
     "source.port": 54321,
     "destination.port": 443,
-    "packet.length": 60
+    "packet.length": 60,
+    "network.connection.id": "a3f1c2d4-...",
+    "tls.server.name": "example.com",
+    "tls.protocol.version": "TLS 1.3"
   }
 }
 ```
-**Note:** Attributes will only be parsed when `parse_attributes` is `true`.
+**Note:** Attributes will only be parsed when `parse_attributes` is `true`. Protocol enrichment attributes (`dns.*`, `http.*`, `tls.*`, `ssh.*`, `icmp.*`) are included automatically when the payload is recognised. `network.connection.id` requires `enable_connection_tracking: true`.
 
 ### Attributes
+
+#### Network layer (always present when `parse_attributes: true`)
 
 - `network.type`: Network layer protocol (`IP`, `IPv6`, `ARP`)
 - `network.interface.name`: Network interface name used for packet capture (e.g., `en0`, `eth0`, `1`)
@@ -203,6 +224,36 @@ Each captured packet is emitted as an OTel log with the following structure:
 - `source.port`: Source port (omitted for ICMP and other non-port protocols)
 - `destination.port`: Destination port (omitted for ICMP and other non-port protocols)
 - `packet.length`: Total packet size in bytes
+
+#### Connection tracking (present when `enable_connection_tracking: true`)
+
+- `network.connection.id`: Stable UUID identifying the bidirectional flow. Both directions of a TCP/UDP conversation share the same ID. Flows are evicted after the `connection_timeout` idle period.
+
+#### Protocol enrichment (present when `parse_attributes: true` and the payload is recognised)
+
+DNS:
+- `dns.question.name`: Query name (e.g., `example.com`)
+- `dns.response_code`: Response code string (e.g., `NOERROR`, `NXDOMAIN`)
+- `dns.is_response`: `true` if this is a DNS response, `false` for a query
+
+HTTP/1.x:
+- `http.request.method`: Request method (e.g., `GET`, `POST`)
+- `url.full`: Full request URL reconstructed from the Host header and request target
+- `server.address`: Value of the `Host` header
+- `http.response.status_code`: Numeric status code (e.g., `200`, `404`)
+- `user_agent.original`: Value of the `User-Agent` header
+
+TLS:
+- `tls.server.name`: Server Name Indication (SNI) from the ClientHello
+- `tls.protocol.version`: Negotiated TLS version (e.g., `TLS 1.3`)
+
+SSH:
+- `ssh.protocol.version`: SSH protocol version from the banner (e.g., `2.0`)
+- `ssh.software.version`: Software version string from the banner (e.g., `OpenSSH_8.9`)
+
+ICMP:
+- `icmp.type`: ICMP type name (e.g., `Echo Request`, `Echo Reply`, `Destination Unreachable`)
+- `icmp.code`: ICMP code value
 
 ### Body Format
 
